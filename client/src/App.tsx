@@ -21,6 +21,16 @@ type MatchAlert = {
   status: string
 }
 
+type DocumentAnalysis = {
+  document_id?: string
+  filename: string
+  status: 'success' | 'demo'
+  pages: number
+  text: string
+  summary: string
+  message: string
+}
+
 const initialProjects: PendingProject[] = [
   {
     id: 'p_8841',
@@ -106,6 +116,10 @@ function App() {
   const [pendingProjects, setPendingProjects] = useState<PendingProject[]>(initialProjects)
   const [alerts, setAlerts] = useState<MatchAlert[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [analysis, setAnalysis] = useState<DocumentAnalysis | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [analysisError, setAnalysisError] = useState<string>('')
 
   useEffect(() => {
     const loadData = async () => {
@@ -162,6 +176,54 @@ function App() {
     }),
     [pendingProjects, alerts],
   )
+
+  const handleAnalyzeDocument = async () => {
+    if (!selectedFile) {
+      setAnalysisError('Select a PDF file before analyzing.')
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', selectedFile)
+
+    setUploading(true)
+    setAnalysisError('')
+
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/documents/analyze', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const responseText = await res.text()
+      let data: Partial<DocumentAnalysis> & { detail?: string }
+
+      try {
+        data = responseText ? JSON.parse(responseText) : {}
+      } catch {
+        throw new Error('Unexpected server response.')
+      }
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Failed to analyze document.')
+      }
+
+      setAnalysis({
+        document_id: data.document_id,
+        filename: data.filename ?? selectedFile.name,
+        status: (data.status as 'success' | 'demo') ?? 'demo',
+        pages: data.pages ?? 1,
+        text: data.text ?? '',
+        summary: data.summary ?? '',
+        message: data.message ?? 'Document analyzed successfully.',
+      })
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : 'Something went wrong.')
+      setAnalysis(null)
+    } finally {
+      setUploading(false)
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -276,6 +338,43 @@ function App() {
               )}
             </div>
           </div>
+        </section>
+
+        <section className="panel lower-panel document-panel">
+          <div className="panel-header">
+            <h3>Project document intake</h3>
+            <span>Amazon Textract</span>
+          </div>
+
+          <div className="document-upload-row">
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+            />
+            <button className="primary-btn" onClick={handleAnalyzeDocument} disabled={uploading}>
+              {uploading ? 'Analyzing...' : 'Analyze PDF'}
+            </button>
+          </div>
+
+          {analysisError ? <div className="upload-error">{analysisError}</div> : null}
+
+          {analysis ? (
+            <div className="analysis-result">
+              <div className="analysis-meta">
+                <span>{analysis.filename}</span>
+                <span>{analysis.status === 'success' ? 'Textract result' : 'Demo mode'}</span>
+                <span>{analysis.pages} pages</span>
+              </div>
+              <p className="analysis-message">{analysis.message}</p>
+              <h4>Extracted summary</h4>
+              <p>{analysis.summary || analysis.text}</p>
+              <h4>Document text</h4>
+              <pre>{analysis.text}</pre>
+            </div>
+          ) : (
+            <div className="empty-state">Upload a PDF to extract text and project details.</div>
+          )}
         </section>
 
         <section className="panel lower-panel">

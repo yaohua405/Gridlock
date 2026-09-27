@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import os
 from datetime import date
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -54,6 +57,67 @@ class PendingProject(BaseModel):
     start_date: str
     end_date: str
     source_document_id: str
+
+
+document_store: dict[str, dict[str, Any]] = {}
+
+
+def _extract_lines_from_textract(response: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    for block in response.get("Blocks", []):
+        if block.get("BlockType") == "LINE" and block.get("Text"):
+            lines.append(block["Text"].strip())
+    return [line for line in lines if line]
+
+
+def _build_demo_extraction(filename: str, pages_count: int = 1) -> dict[str, Any]:
+    demo_text = (
+        f"Demo extraction for {filename}: This PDF was uploaded to Gridlock and queued for Textract processing. "
+        "The document contains a utility project summary, planning window, and geographic boundary details for review. "
+        "Please configure AWS credentials and a valid Textract-enabled environment to process real PDFs."
+    )
+    return {
+        "status": "demo",
+        "filename": filename,
+        "pages": pages_count,
+        "text": demo_text,
+        "summary": demo_text[:220],
+        "message": "Textract is not configured in this environment; demo output was generated instead.",
+    }
+
+
+def _analyze_with_textract(pdf_bytes: bytes, filename: str) -> dict[str, Any]:
+    enabled = os.getenv("AWS_TEXTRACT_ENABLED", "true").lower() not in {"0", "false", "no"}
+    if not enabled:
+        return _build_demo_extraction(filename)
+
+    try:
+        client = boto3.client(
+            "textract",
+            region_name=os.getenv("AWS_REGION", "us-east-1"),
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        )
+        response = client.analyze_document(
+            Document={"Bytes": pdf_bytes},
+            FeatureTypes=["TABLES", "FORMS"],
+        )
+    except (NoCredentialsError, BotoCoreError, ClientError):
+        if os.getenv("AWS_TEXTRACT_DEMO_MODE", "true").lower() not in {"0", "false", "no"}:
+            return _build_demo_extraction(filename)
+        raise HTTPException(status_code=503, detail="Amazon Textract is not configured for this deployment.")
+
+    lines = _extract_lines_from_textract(response)
+    text = "\n".join(lines) if lines else "No text blocks were returned by Amazon Textract."
+    summary = text[:500].strip()
+    return {
+        "status": "success",
+        "filename": filename,
+        "pages": max(1, len(response.get("DocumentMetadata", {}).get("Pages", [1]))),
+        "text": text,
+        "summary": summary,
+        "message": "Amazon Textract successfully extracted the document content.",
+    }
 
 
 project_store: list[dict[str, Any]] = [
@@ -223,3 +287,43 @@ def get_map_projects(
 @app.get("/api/v1/matches/alerts")
 def get_match_alerts() -> dict[str, list[dict[str, Any]]]:
     return {"data": match_store}
+
+
+@app.post("/api/v1/documents/analyze")
+async def analyze_uploaded_document(file: UploadFile = File(...)) -> dict[str, Any]:
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+    pdf_bytes = await file.read()
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded PDF is empty.")
+
+    document_id = f"doc_{uuid4().hex[:10]}"
+    extraction = _analyze_with_textract(pdf_bytes, file.filename)
+    document_store[document_id] = {
+        "document_id": document_id,
+        "filename": file.filename,
+        "status": extraction["status"],
+        "pages": extraction["pages"],
+        "text": extraction["text"],
+        "summary": extraction["summary"],
+        "message": extraction["message"],
+    }
+
+    return {
+        "document_id": document_id,
+        "filename": file.filename,
+        "status": extraction["status"],
+        "pages": extraction["pages"],
+        "text": extraction["text"],
+        "summary": extraction["summary"],
+        "message": extraction["message"],
+    }
+
+
+@app.get("/api/v1/documents/{document_id}")
+def get_document_analysis(document_id: str) -> dict[str, Any]:
+    document = document_store.get(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return document

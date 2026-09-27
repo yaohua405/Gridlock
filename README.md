@@ -1,4 +1,5 @@
-ShellHacks 2026 - Sperry Tech - The Gridlock Challenge
+###<u>ShellHacks 2026 - Sperry Tech - The Gridlock Challenge</u>
+
 Open two terminals in the workspace root, the run these commands:
 1. start the backend
 cd E:\Gridlock\server

@@ -34,9 +34,9 @@ docker-compose up --build
 
 This starts:
 
-PostGIS database
-Redis
-FastAPI backend
+PostGIS database,
+Redis,
+FastAPI backend,
 The frontend still runs separately with Vite for local development, which is the usual setup for this repo.
 
 Quick health check

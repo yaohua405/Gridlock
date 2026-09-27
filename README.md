@@ -1,5 +1,9 @@
 ### ShellHacks 2026 - Sperry Tech - The Gridlock Challenge
 
+<img width="2548" height="1356" alt="image1" src="https://github.com/user-attachments/assets/1023ab8d-4906-43cd-85c8-5254cb82e810" />
+
+
+
 How to run the project:
 
 Open two terminals in the workspace root, the run these commands:

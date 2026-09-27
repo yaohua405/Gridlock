@@ -3,7 +3,9 @@
 How to run the project:
 
 Open two terminals in the workspace root, the run these commands:
-1. start the backend
+1. start the backend:
+
+
 cd E:\Gridlock\server
 .\.venv\Scripts\Activate.ps1
 python -m uvicorn main:app --host 0.0.0.0 --port 8000
@@ -11,7 +13,9 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8000
 This starts the FastAPI API on:
 http://localhost:8000
 
-2) Start the frontend
+2) Start the frontend:
+
+   
 cd E:\Gridlock\client
 npm install
 npm run dev -- --host 0.0.0.0

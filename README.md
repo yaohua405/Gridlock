@@ -1,4 +1,6 @@
-###<u>ShellHacks 2026 - Sperry Tech - The Gridlock Challenge</u>
+### ShellHacks 2026 - Sperry Tech - The Gridlock Challenge
+
+How to run:
 
 Open two terminals in the workspace root, the run these commands:
 1. start the backend

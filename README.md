@@ -1,4 +1,4 @@
-### Sperry Tech - The Gridlock Challeng
+### Sperry Tech - The Gridlock Challenge
 
 How to run the project:
 
